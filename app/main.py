@@ -2,9 +2,9 @@ import struct
 import socket, sys
 # from app.response import build_dns_response
 # from app.dns import create_dns_header
-import dns
-import message
-import response as res
+from . import dns 
+from . import message
+from . import response as res
 
 def main():
     print("Logs from your program will appear here!")
