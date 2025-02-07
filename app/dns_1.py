@@ -16,14 +16,13 @@ class DNS:
     andcount: int  # Answer Record Count (ANCOUNT)      16 bits
     nscount: int  # Authority Record Count (NSCOUNT)   16 bits
     arcount: int  # Additional Record Count (ARCOUNT)  16 bits
+    
     @property
     def header(self) -> bytes:
         header = bytearray(12)
         header[0] = self.id >> 8
         header[1] = self.id & 0xFF
-        header[2] = (
-            self.qr << 7 | self.opcode << 3 | self.aa << 2 | self.tc << 1 | self.rd
-        )
+        header[2] = (self.qr << 7 | self.opcode << 3 | self.aa << 2 | self.tc << 1 | self.rd)
         header[3] = self.ra << 7 | self.z << 4 | self.rccode
         header[4] = self.qdcount
         header[5] = self.andcount
@@ -34,9 +33,11 @@ class DNS:
 def main():
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_socket.bind(("127.0.0.1", 2053))
+    
     while True:
         try:
             buf, source = udp_socket.recvfrom(512)
+            
             response = DNS(
                 id=1234,
                 qr=1,

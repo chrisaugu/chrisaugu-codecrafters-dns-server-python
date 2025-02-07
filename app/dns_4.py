@@ -61,32 +61,25 @@ class DNSHeader_RAW:
         flags = (
             (qr << 15)  # 1 bit   -  1 for a reply packet, 0 for a question packet
             | (opcode << 11)  # 4 bits  -  Specifies the kind of query in a message
-            | (
-                aa << 10
-            )  # 1 bit   -  if the responding server "owns" the domain queried, i.e., it's authoritative
-            | (
-                tc << 9
-            )  # 1 bit   -  if the message is larger than 512 bytes. Always 0 in UDP responses
-            | (
-                rd << 8
-            )  # 1 bit   -  Sender sets this to 1 if the server should recursively resolve this query, 0 otherwise
-            | (
-                ra << 7
-            )  # 1 bit   -  sets this to 1 to indicate that recursion is available
-            | (
-                z << 4
-            )  # 3 bits  -  Used by DNSSEC queries. At inception, it was reserved for future use
+            | (aa << 10)  # 1 bit   -  if the responding server "owns" the domain queried, i.e., it's authoritative
+            | (tc << 9)  # 1 bit   -  if the message is larger than 512 bytes. Always 0 in UDP responses
+            | (rd << 8)  # 1 bit   -  Sender sets this to 1 if the server should recursively resolve this query, 0 otherwise
+            | (ra << 7)  # 1 bit   -  sets this to 1 to indicate that recursion is available
+            | (z << 4)  # 3 bits  -  Used by DNSSEC queries. At inception, it was reserved for future use
             | (rcode)  # 4 bits  -  Response code indicating the status of the response
         )
         self.__header = struct.pack(">HHHHHH", id, flags, qdc, anc, nsc, arc)
+        
     def get_bytes(self) -> bytes:
         return self.__header
+    
 ####################################################################################################
 def main():
     # You can use print statements as follows for debugging, they'll be visible when running tests.
     print("Logs from your program will appear here!")
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_socket.bind(("127.0.0.1", 2053))
+    
     while True:
         try:
             buf, source = udp_socket.recvfrom(512)
@@ -110,6 +103,7 @@ def main():
         except Exception as e:
             print(f"Error receiving data: {e}")
             break
+        
 ####################################################################################################
 if __name__ == "__main__":
     main()

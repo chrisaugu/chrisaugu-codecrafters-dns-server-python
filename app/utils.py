@@ -17,6 +17,7 @@ HEADER_SIZES = [
     ("num_authrr", 16),
     ("num_addrr", 16),
 ]
+
 def make_header(**kwargs):
     pos, header = 0, 0
     for name, length in reversed(HEADER_SIZES):

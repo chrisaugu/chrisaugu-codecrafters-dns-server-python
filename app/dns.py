@@ -1,3 +1,4 @@
+from enum import Enum
 import struct
 
 def create_dns_header() -> bytes:
@@ -55,8 +56,64 @@ def create_dns_header() -> bytes:
     )
 
 
-def create_dns_question() -> bytes:
-    pass
+def create_dns_question(name, n, m) -> bytes:
+    label = name.split(".")
+    qname = b"\x06" + label[0] + b"\x03" + label[1] + b"\x00"
+    qtype = 2
+    qclass = 2
+    
+    return struct.pack(
+        "!HH",
+        qname,
+        qtype,
+        qclass,
+    )
+
+def create_dns_query() -> bytes:
+    header = create_dns_header()
+    question = create_dns_question()
+    
+    return header + question
 
 def create_dns_answer() -> bytes:
     pass
+class Class(Enum):
+    IN = 1
+    CS = 2
+    CH = 3
+    HS = 4
+
+class Record(Enum):
+    A = 1
+    NS = 2
+    CNAME = 5
+    SOA = 6
+    PTR = 12
+    MX = 15
+    TXT = 16
+    AAAA = 28
+    SRV = 33
+    ANY = 255
+
+class QTYPES(Enum):
+    A = 1
+    NS = 2
+    CNAME = 5
+    SOA = 6
+    PTR = 12
+    MX = 15
+    TXT = 16
+    AAAA = 28
+    SRV = 33
+    ANY = 255
+
+class TYPES(Enum):
+    pass
+
+class ResourceRecord:
+    def __init__(self, name: str, record_type: Record, record_class: Class, ttl: int, data: bytes):
+        self.name = name
+        self.record_type = record_type
+        self.record_class = record_class
+        self.ttl = ttl
+        self.data = data

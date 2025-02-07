@@ -4,8 +4,8 @@
 # # Print a welcome message
 # print(f"Welcome to mypackage version {version}")
 
-# # Define the __all__ variable
-# __all__ = ['dns', 'message', 'response']
+# Define the __all__ variable
+__all__ = ['dns', 'message', 'response']
 
 # # Import the submodules
 # from . import dns
