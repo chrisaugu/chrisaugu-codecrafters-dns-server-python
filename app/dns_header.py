@@ -1491,3 +1491,33 @@ def DNStoDict(hdr: bytes):
 
 # print("\n DNS PACKET dictionary")
 # print(dnsDict)
+
+def decode_qname(data: bytes, offset):
+    """
+    Decodes a QNAME from a DNS packet.
+
+    Args:
+        data: The DNS packet as a byte string.
+        offset: The offset (in bytes) where the QNAME starts.
+
+    Returns:
+        A tuple containing:
+            - The decoded QNAME as a string.
+            - The offset of the next field after the QNAME.
+    """
+    domain_name = ""
+    current_offset = offset
+    while True:
+        length = data[current_offset]
+        current_offset += 1
+
+        if length == 0:
+            break  # End of QNAME
+
+        label = data[current_offset:current_offset + length].decode()
+        # "ascii")
+        # .decode('utf-8')
+        domain_name += label + "."
+        current_offset += length
+
+    return domain_name[:-1], current_offset  # Remove trailing dot

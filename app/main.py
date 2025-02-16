@@ -1,7 +1,7 @@
 import struct
 import socket, sys
 import traceback
-from .dns_header import QTYPES, DNSAnswer, DNSHeader, DNSQuestion, create_dns_header, build_dns_response, parse_header, build_dns_header, encode_dns_name, decode_name_simple, DNStoDict
+from .dns_header import QTYPES, DNSAnswer, DNSHeader, DNSQuestion, create_dns_header, build_dns_response, parse_header, build_dns_header, encode_dns_name, decode_name_simple, DNStoDict, decode_qname
 
 def main():
     print("Starting UDP server...")
@@ -132,10 +132,15 @@ def main():
                 arcount
             )
             
-            qname = b'\x0ccodecrafters\x02io\x00'
-            # qname = encode_dns_name("codecrafters.io")
+            # qname = b'\x0ccodecrafters\x02io\x00'
+            # qname = decode_name_simple(buf)
+            qname, next_offset = decode_qname(buf, 12)
+            qname = encode_dns_name(qname)
+            # print(qname)
             qtype = b"\x00\x01"
+            # qtype = (1).to_bytes(2, byteorder='big')
             qclass = b"\x00\x01"
+            # qclass = (1).to_bytes(2, byteorder='big')
             question = qname + qtype + qclass
             
             ttl = (60).to_bytes(4, byteorder='big')
