@@ -1,7 +1,7 @@
 import struct
 import socket, sys
 import traceback
-from dns_header import QTYPES, DNSAnswer, DNSHeader, DNSQuestion, create_dns_header, build_dns_response, forward_dns_query, parse_header, build_dns_header, encode_dns_name, decode_name_simple, DNStoDict, decode_qname, parse_question_section
+from .dns_header import QTYPES, DNSAnswer, DNSHeader, DNSQuestion, create_dns_header, build_dns_response, forward_dns_query, parse_header, build_dns_header, encode_dns_name, decode_name_simple, DNStoDict, decode_qname, parse_question_section
 
 def main():
     print("Starting UDP server...")
