@@ -1,8 +1,9 @@
+from io import BytesIO
 import struct
-from dataclasses import dataclass, astuple
+from dataclasses import dataclass, astuple, field
 from ctypes import BigEndianStructure, c_uint16, c_uint8
 from enum import Enum
-
+import socket
 
 TYPE_A = 1
 CLASS_IN = 1
@@ -143,7 +144,7 @@ class DNSRecordType(Enum):
     WKS = 11
     HINFO = 13
     MINFO = 14
-    
+
 class QTYPES(Enum):
     A = 1
     NS = 2
@@ -160,7 +161,7 @@ class TYPES(Enum):
     pass
 
 @dataclass
-class RDataType:
+class RDataMXType:
     preference: int
     exchange: int
     
@@ -195,22 +196,42 @@ class DNSAnswer3:
     ttl: int
     rdlength: int
     rdata: bytes
+
     
 @dataclass
 class DNSAuthority3:
     pass
+
 
 @dataclass
 class DNSAncillary3:
     pass
 
 
-class DNSMessage:
+class DNSMessage3:
     header: DNSHeader3
-    question: DNSQuestion3
-    answer: DNSAnswer3
+    questions: list[DNSQuestion3] = field(default_factory=list)
+    answers: list[DNSAnswer3] = field(default_factory=list)
     authority: DNSAuthority3
     additional: DNSAncillary3
+    
+    def add_question(self, data: DNSQuestion3):
+        self.questions.append(data)
+        self.header.ancount += 1
+    
+    def encode(self) -> bytes:
+        header = self.header.encode()
+        questions = b"".join([question.encode() for question in self.questions])
+        answers = b"".join([answer.encode() for answer in self.answers])
+        return header + questions + answers
+    
+    @staticmethod
+    def decode(data: bytes) -> "DNSMessage":
+        reader = BytesIO(data)
+        header = DNSHeader3.decode(reader)
+        questions = [DNSQuestion3.decode(reader) for _ in range(header.qdcount)]
+        records = [DNSAnswer3.decode(reader) for _ in range(header.ancount)]
+        return DNSMessage(header=header, questions=questions, answers=records)
 
 
 @dataclass
@@ -233,6 +254,7 @@ class DNSQuestion:
 
     def to_bytes(self) -> bytes:
         return self.qname + struct.pack("!HH", self.qtype, self.qclass)
+
 
 class DNSAnswer:
     def __init__(
@@ -263,6 +285,7 @@ class DNSAnswer:
 
     def to_bytes(self) -> bytes:
         return self.name + self.type + self.aclass + self.ttl + self.length + self.rdata
+
 
 @dataclass
 class DNSReplyPacket:
@@ -427,164 +450,6 @@ class DNSHeader2(BigEndianStructure):
         ("arcount", c_uint16),  # Number of additional records
     ]
 
-def bitstring_to_bytes(s):
-    return int(s, 2).to_bytes((len(s) + 7) // 8, byteorder="big")
-
-def encode_bits(number, bit_length):
-    return (0 << bit_length) | number
-
-def packet_identifier():
-    return 1234
-
-def concatenate_bits(a, b):
-    # Calculate the number of bits in b
-    num_bits = b.bit_length()
-    # Shift a left by the number of bits in b and combine with b
-    return (a << num_bits) | b
-
-def encode_str_to_bytes(data: str) -> bytes:
-    parts = data.split(".")
-    result = b""
-    for part in parts:
-        length = len(part)
-        result += length.to_bytes(1, byteorder="big") + part.encode()
-    result += b"\x00"
-    return result
-
-def header_to_bytes(header):
-    fields = astuple(header)
-    # there are 6 `H`s because there are 6 fields
-    return struct.pack("!HHHHHH", *fields)
-
-def question_to_bytes(question):
-    return question.qname + struct.pack("!HH", question.qtype, question.qclass)
-
-def createHeader():
-    # response = format(int(1234), '016b') #pack_id
-    response = bin(1234)
-    response = response + format(int(1), "01b")  # query/response id
-    response = response + format(int(0), "04b")  # opcode
-    response = response + format(int(0), "01b")  # authoritative answer
-    response = response + format(int(0), "01b")  # truncation
-    response = response + format(int(0), "01b")  # recursion desired
-    response = response + format(int(0), "01b")  # recursion available
-    response = response + format(int(0), "03b")  # reserved
-    response = response + format(int(0), "04b")  # response code
-    response = response + format(int(0), "016b")  # question count
-    response = response + format(int(0), "016b")  # ancount
-    response = response + format(int(0), "016b")  # nscount
-    response = response + format(int(0), "016b")  # arcount
-    print(response)
-    # response = b""
-    
-    return bitstring_to_bytes(response)
-
-def create_dns_header() -> bytes:
-    """
-    Creates a 12-byte DNS header with the specified fields.
-    All integers are encoded in big-endian format.
-    Returns:
-        bytes: A 12-byte header conforming to the DNS specification
-    """
-    # First 16 bits: Packet Identifier (ID)
-    id = 1234
-    # Next 16 bits: Various flags
-    # We'll construct this using binary operations
-    #
-    # 1st flag - 8 bits
-    # QR (1 bit): 1
-    # OPCODE (4 bits): 0
-    # AA (1 bit): 0
-    # TC (1 bit): 0
-    # RD (1 bit): 0
-    # The bit shifting is a bit easier this to visualize if
-    # all flags have their bits set:
-    # 10000000  (qr) 1 << 7
-    # 00001000  (opcode) 1 << 3
-    # 00000100  (aa) 1 << 2
-    # 00000010  (tc) 1 << 1
-    # 00000001  (rd) 1
-    # --------  OR them together (|)
-    # 10001111  = 143 in decimal
-    #
-    flags1 = (1 << 7) | (0 << 3) | (0 << 2) | (0 << 1) | 0
-    # 2nd flag - 8 bits
-    # RA (1 bit): 0
-    # Z (3 bits): 0
-    # RCODE (4 bits): 0
-    flags2 = (0 << 7) | (0)
-    # Next four 16-bit fields
-    qdcount = 0  # Question Count
-    ancount = 0  # Answer Record Count
-    nscount = 0  # Authority Record Count
-    arcount = 0  # Additional Record Count
-    # Pack everything into a binary string
-    # '!' means network byte order (big-endian)
-    # 'H' means 16-bit unsigned short
-    # 'BB' means two 8-bit unsigned chars (for the flags)
-    return struct.pack(
-        "!HBBHHHH",
-        id,  # 16 bits
-        flags1,  # 8 bits
-        flags2,  # 8 bits
-        qdcount,  # 16 bits
-        ancount,  # 16 bits
-        nscount,  # 16 bits
-        arcount,  # 16 bits
-    )
-
-def create_dns_question(name, n, m) -> bytes:
-    label = name.split(".")
-    qname = b"\x06" + label[0] + b"\x03" + label[1] + b"\x00"
-    qtype = 2
-    qclass = 2
-    
-    return struct.pack(
-        "!HH",
-        qname,
-        qtype,
-        qclass,
-    )
-
-def create_dns_query() -> bytes:
-    header = create_dns_header()
-    question = create_dns_question()
-    
-    return header + question
-
-def create_dns_answer() -> bytes:
-    pass
-
-def build_dns_response(query):
-    """
-    Builds a DNS response based on the query received.
-    """
-    # Extract the DNS header and question section
-    transaction_id = query[:2]  # Transaction ID from the query (2 bytes)
-    flags = 0x8000  # QR=1, OPCODE=0, AA=0, TC=0, RD=0, RA=0, Z=0, RCODE=0
-    # Extract QDCOUNT from the query header
-    qdcount = struct.unpack("!H", query[4:6])[0]  # Number of questions
-    # Fixed values for response (no answers or additional records)
-    ancount = 0
-    nscount = 0
-    arcount = 0
-    
-    # Construct the DNS header using the transaction ID and fixed values
-    dns_header = struct.pack(
-        "!HHHHHH",
-        struct.unpack("!H", transaction_id)[0],
-        flags,
-        qdcount,
-        ancount,
-        nscount,
-        arcount,
-    )
-    # The question section starts after the header (12 bytes), copy it as-is
-    dns_question = query[12:]
-    # Combine the DNS header and question section to form the response
-    dns_response = dns_header + dns_question
-    return dns_response
-
 @dataclass
 class Packet:
     id: int
@@ -656,48 +521,7 @@ class Packet:
         ]
         bin_str = "".join(builder)
         return bitstring_to_bytes(bin_str)
-    
-def bitstring_to_bytes(s):
-    v = int(s, 2)
-    b = bytearray()
-    while v:
-        b.append(v & 0xFF)
-        v >>= 8
-    return bytes(b[::-1])
 
-def bool_to_bin(val: bool) -> str:
-    return str(int(val))
-
-def int_to_bin(val: int, bit_width: int) -> str:
-    return bin(val)[2:].zfill(bit_width)
-
-def parse_request(buf: bytes) -> bytes:
-    """Parse the request from the server"""
-    pkt = Packet.build_req(buf)
-    return get_response(pkt)
-
-default_resp = Packet(
-    id=1234,
-    qr_indicator=True,
-    opcode=0,
-    is_authoritative=False,
-    truncation=False,
-    recursion_desired=False,
-    recursion_available=0,
-    reserved=0,
-    response_code=0,
-    q_count=0,
-    an_count=0,
-    ns_count=0,
-    ar_count=0,
-)
-
-def get_response(pkt: Packet) -> bytes:
-    return default_resp.to_bytes()
-
-def socket_from_addr(addr):
-    ip, port = addr.split(":")
-    return ip, int(port)
 
 class DNSMessage:
     def __init__(self, buffer, src):
@@ -838,25 +662,6 @@ class DNSMessage:
             self.qtns.append(subbuf)
             print("QUESTIONS:", self.qtns)
 
-def get_answer_from_server(sbuf, client):
-    bpos = 12
-    rcode = sbuf[4] & 0xF
-    client.set_flag(RCODE, rcode)
-    if bpos < len(sbuf):
-        while sbuf[bpos]:
-            if sbuf[bpos] & 0xC0:
-                msg_offset = int.from_bytes(sbuf[bpos : bpos + 2]) & 0x3FFF
-                sect_end = msg_offset
-                while sbuf[sect_end]:
-                    sect_end += 1
-                bpos += 1
-                break
-            else:
-                bpos += sbuf[bpos] + 1
-        bpos += 5
-        return sbuf[bpos:]
-    return b""
-
 class DNSMessage2:
     def __init__(
         self,
@@ -930,7 +735,6 @@ class DNSMessage2:
 
     def get_header(self):
         return self.header
-
 
 class DNSHeader:
     def __init__(
@@ -1098,6 +902,222 @@ class DNSAnswer:
             offset += rdlength
 
         return answers, offset
+
+def bitstring_to_bytes(s):
+    return int(s, 2).to_bytes((len(s) + 7) // 8, byteorder="big")
+
+def bitstring_to_bytes(s):
+    v = int(s, 2)
+    b = bytearray()
+    while v:
+        b.append(v & 0xFF)
+        v >>= 8
+    return bytes(b[::-1])
+
+def encode_bits(number, bit_length):
+    return (0 << bit_length) | number
+
+def concatenate_bits(a, b):
+    # Calculate the number of bits in b
+    num_bits = b.bit_length()
+    # Shift a left by the number of bits in b and combine with b
+    return (a << num_bits) | b
+
+def encode_str_to_bytes(data: str) -> bytes:
+    parts = data.split(".")
+    result = b""
+    for part in parts:
+        length = len(part)
+        result += length.to_bytes(1, byteorder="big") + part.encode()
+    result += b"\x00"
+    return result
+
+def header_to_bytes(header):
+    fields = astuple(header)
+    # there are 6 `H`s because there are 6 fields
+    return struct.pack("!HHHHHH", *fields)
+
+def question_to_bytes(question):
+    return question.qname + struct.pack("!HH", question.qtype, question.qclass)
+
+def createHeader():
+    # response = format(int(1234), '016b') #pack_id
+    response = bin(1234)
+    response = response + format(int(1), "01b")  # query/response id
+    response = response + format(int(0), "04b")  # opcode
+    response = response + format(int(0), "01b")  # authoritative answer
+    response = response + format(int(0), "01b")  # truncation
+    response = response + format(int(0), "01b")  # recursion desired
+    response = response + format(int(0), "01b")  # recursion available
+    response = response + format(int(0), "03b")  # reserved
+    response = response + format(int(0), "04b")  # response code
+    response = response + format(int(0), "016b")  # question count
+    response = response + format(int(0), "016b")  # ancount
+    response = response + format(int(0), "016b")  # nscount
+    response = response + format(int(0), "016b")  # arcount
+    print(response)
+    # response = b""
+    
+    return bitstring_to_bytes(response)
+
+def create_dns_header() -> bytes:
+    """
+    Creates a 12-byte DNS header with the specified fields.
+    All integers are encoded in big-endian format.
+    Returns:
+        bytes: A 12-byte header conforming to the DNS specification
+    """
+    # First 16 bits: Packet Identifier (ID)
+    id = 1234
+    # Next 16 bits: Various flags
+    # We'll construct this using binary operations
+    #
+    # 1st flag - 8 bits
+    # QR (1 bit): 1
+    # OPCODE (4 bits): 0
+    # AA (1 bit): 0
+    # TC (1 bit): 0
+    # RD (1 bit): 0
+    # The bit shifting is a bit easier this to visualize if
+    # all flags have their bits set:
+    # 10000000  (qr) 1 << 7
+    # 00001000  (opcode) 1 << 3
+    # 00000100  (aa) 1 << 2
+    # 00000010  (tc) 1 << 1
+    # 00000001  (rd) 1
+    # --------  OR them together (|)
+    # 10001111  = 143 in decimal
+    #
+    flags1 = (1 << 7) | (0 << 3) | (0 << 2) | (0 << 1) | 0
+    # 2nd flag - 8 bits
+    # RA (1 bit): 0
+    # Z (3 bits): 0
+    # RCODE (4 bits): 0
+    flags2 = (0 << 7) | (0)
+    # Next four 16-bit fields
+    qdcount = 0  # Question Count
+    ancount = 0  # Answer Record Count
+    nscount = 0  # Authority Record Count
+    arcount = 0  # Additional Record Count
+    # Pack everything into a binary string
+    # '!' means network byte order (big-endian)
+    # 'H' means 16-bit unsigned short
+    # 'BB' means two 8-bit unsigned chars (for the flags)
+    return struct.pack(
+        "!HBBHHHH",
+        id,  # 16 bits
+        flags1,  # 8 bits
+        flags2,  # 8 bits
+        qdcount,  # 16 bits
+        ancount,  # 16 bits
+        nscount,  # 16 bits
+        arcount,  # 16 bits
+    )
+
+def create_dns_question(name, n, m) -> bytes:
+    label = name.split(".")
+    qname = b"\x06" + label[0] + b"\x03" + label[1] + b"\x00"
+    qtype = 2
+    qclass = 2
+    
+    return struct.pack(
+        "!HH",
+        qname,
+        qtype,
+        qclass,
+    )
+
+def create_dns_query() -> bytes:
+    header = create_dns_header()
+    question = create_dns_question()
+    
+    return header + question
+
+def create_dns_answer() -> bytes:
+    pass
+
+def build_dns_response(query):
+    """
+    Builds a DNS response based on the query received.
+    """
+    # Extract the DNS header and question section
+    transaction_id = query[:2]  # Transaction ID from the query (2 bytes)
+    flags = 0x8000  # QR=1, OPCODE=0, AA=0, TC=0, RD=0, RA=0, Z=0, RCODE=0
+    # Extract QDCOUNT from the query header
+    qdcount = struct.unpack("!H", query[4:6])[0]  # Number of questions
+    # Fixed values for response (no answers or additional records)
+    ancount = 0
+    nscount = 0
+    arcount = 0
+    
+    # Construct the DNS header using the transaction ID and fixed values
+    dns_header = struct.pack(
+        "!HHHHHH",
+        struct.unpack("!H", transaction_id)[0],
+        flags,
+        qdcount,
+        ancount,
+        nscount,
+        arcount,
+    )
+    # The question section starts after the header (12 bytes), copy it as-is
+    dns_question = query[12:]
+    # Combine the DNS header and question section to form the response
+    dns_response = dns_header + dns_question
+    return dns_response
+
+def bool_to_bin(val: bool) -> str:
+    return str(int(val))
+
+def int_to_bin(val: int, bit_width: int) -> str:
+    return bin(val)[2:].zfill(bit_width)
+
+def parse_request(buf: bytes) -> bytes:
+    """Parse the request from the server"""
+    pkt = Packet.build_req(buf)
+    return get_response(pkt)
+
+default_resp = Packet(
+    id=1234,
+    qr_indicator=True,
+    opcode=0,
+    is_authoritative=False,
+    truncation=False,
+    recursion_desired=False,
+    recursion_available=0,
+    reserved=0,
+    response_code=0,
+    q_count=0,
+    an_count=0,
+    ns_count=0,
+    ar_count=0,
+)
+
+def get_response(pkt: Packet) -> bytes:
+    return default_resp.to_bytes()
+
+def socket_from_addr(addr):
+    ip, port = addr.split(":")
+    return ip, int(port)
+
+def get_answer_from_server(sbuf, client):
+    bpos = 12
+    rcode = sbuf[4] & 0xF
+    client.set_flag(RCODE, rcode)
+    if bpos < len(sbuf):
+        while sbuf[bpos]:
+            if sbuf[bpos] & 0xC0:
+                msg_offset = int.from_bytes(sbuf[bpos : bpos + 2]) & 0x3FFF
+                sect_end = msg_offset
+                while sbuf[sect_end]:
+                    sect_end += 1
+                bpos += 1
+                break
+            else:
+                bpos += sbuf[bpos] + 1
+        bpos += 5
+        return sbuf[bpos:]
+    return b""
 
 def parse_domain(message: bytes, offset: int) -> tuple:
         labels = []
@@ -1351,7 +1371,6 @@ def build_dns_header(data: bytes) -> bytes:
         nscount,
         arcount
     )
-    
 
 def parse_header(message: bytes):
     # Unpack the first 12 bytes of the DNS header
@@ -1521,3 +1540,39 @@ def decode_qname(data: bytes, offset):
         current_offset += length
 
     return domain_name[:-1], current_offset  # Remove trailing dot
+
+
+def parse_question_section(data, offset, num_questions):
+    """
+    Parses the question section of a DNS packet.
+
+    Args:
+        data: The DNS packet as a byte string.
+        offset: The offset (in bytes) where the question section starts.
+        num_questions: The number of questions in the section (from the header).
+
+    Returns:
+        A tuple containing:
+            - A list of dictionaries, where each dictionary represents a question.
+            - The offset of the next section after the question section.
+    """
+    questions = []
+    current_offset = offset
+
+    for _ in range(num_questions):
+        qname, current_offset = decode_qname(data, current_offset)
+
+        qtype = struct.unpack('!H', data[current_offset:current_offset + 2])[0]
+        current_offset += 2
+
+        qclass = struct.unpack('!H', data[current_offset:current_offset + 2])[0]
+        current_offset += 2
+
+        question = {
+            'QNAME': qname,
+            'QTYPE': qtype,
+            'QCLASS': qclass
+        }
+        questions.append(question)
+
+    return questions, current_offset

@@ -1,7 +1,7 @@
 import struct
 import socket, sys
 import traceback
-from .dns_header import QTYPES, DNSAnswer, DNSHeader, DNSQuestion, create_dns_header, build_dns_response, parse_header, build_dns_header, encode_dns_name, decode_name_simple, DNStoDict, decode_qname
+from .dns_header import QTYPES, DNSAnswer, DNSHeader, DNSQuestion, create_dns_header, build_dns_response, forward_dns_query, parse_header, build_dns_header, encode_dns_name, decode_name_simple, DNStoDict, decode_qname, parse_question_section
 
 def main():
     print("Starting UDP server...")
@@ -77,7 +77,8 @@ def main():
             # header = rid + rflags + qdcount + ancount + (b"\x00" * 6)
             # header = build_dns_header(buf)
             # rid, rflags, qdcount, ancount, nscount, arcount = parse_header(buf)
-            
+
+            # parse message header
             rid, rflags, qdcount, ancount, nscount, arcount = struct.unpack("!HHHHHH", buf[:12])
             # rid = b"\x04\xd2" #(1234).to_bytes(2, byteorder='big') struct.pack('>h', 1234)
             qr = 1
@@ -102,8 +103,7 @@ def main():
             
             # qdcount= b"\x00\x01"
             # ancount = b"\x00\x01"
-            ancount = 1
-            
+
             # packing
             rflags = (
                 (qr << 15) |
@@ -120,35 +120,63 @@ def main():
             # rflags = (1 << 7) | (1 << 3) | (0 << 2) | (0 << 1) | 1
             # rflags2 = (0 << 7) | (0)
        
-            header = struct.pack(
-                "!HHHHHH", 
-                # "!HBBHHHH",
-                rid, 
-                rflags,
-                # rflags2,
-                qdcount, 
-                ancount, 
-                nscount, 
-                arcount
-            )
+            # header = struct.pack(
+            #     "!HHHHHH", 
+            #     # "!HBBHHHH",
+            #     rid, 
+            #     rflags,
+            #     # rflags2,
+            #     qdcount, 
+            #     ancount, 
+            #     nscount, 
+            #     arcount
+            # )
             
-            # qname = b'\x0ccodecrafters\x02io\x00'
-            # qname = decode_name_simple(buf)
-            qname, next_offset = decode_qname(buf, 12)
-            qname = encode_dns_name(qname)
-            # print(qname)
-            qtype = b"\x00\x01"
-            # qtype = (1).to_bytes(2, byteorder='big')
-            qclass = b"\x00\x01"
-            # qclass = (1).to_bytes(2, byteorder='big')
-            question = qname + qtype + qclass
+            print(parse_question_section(buf[12:], 0, qdcount))
             
-            ttl = (60).to_bytes(4, byteorder='big')
-            rdata = b"\x08\x08\x08\x08"
-            rdlength = len(rdata).to_bytes(2, byteorder='big')
-            answer = question + ttl + rdlength + rdata
+            # questions = bytearray()
+            # for question in range(qdcount):
+            #     # loop this part to parse each question
+            #     # qname = decode_name_simple(buf)
+            #     qname, next_offset = decode_qname(buf, 12)
+            #     qname = encode_dns_name(qname)
+            #     # qtype = b"\x00\x01"
+            #     qtype = (1).to_bytes(2, byteorder='big')
+            #     # qclass = b"\x00\x01"
+            #     qclass = (1).to_bytes(2, byteorder='big')
+            #     question = qname + qtype + qclass
+            #     questions.append(question)
+            
+            # answers = bytearray()
+            # for question in questions:
+            #     # for each parsed query perform dns lookup/resolve
+            #     # resource records  
+            #     qname, next_offset = decode_qname(buf, 12)
+            #     qname = encode_dns_name(qname)
+            #     # qtype = b"\x00\x01"
+            #     qtype = (1).to_bytes(2, byteorder='big')
+            #     # qclass = b"\x00\x01"
+            #     qclass = (1).to_bytes(2, byteorder='big')
+            #     ttl = (60).to_bytes(4, byteorder='big')
+            #     rdata = b"\x08\x08\x08\x08"
+            #     rdlength = len(rdata).to_bytes(2, byteorder='big')
+            #     answer = question + ttl + rdlength + rdata
+            #     answers.append(answer)
 
-            response = header + question + answer
+            # # set id, qr=1, ancount, other flags
+            # ancount = len(answers)
+            # header = struct.pack(
+            #     "!HHHHHH", 
+            #     rid, 
+            #     rflags,
+            #     qdcount, 
+            #     ancount, 
+            #     nscount, 
+            #     arcount
+            # )
+            
+            # response = header + questions + answers
+            response = b""
 
             # header = DNSHeader.from_bytes(buf)
             # # overwrite received flags for our reply
@@ -259,4 +287,4 @@ def mainx():
             s.sendto(response, addr)
 
 if __name__ == "__main__":
-    main()
+    mainx()
